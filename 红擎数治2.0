@@ -1,0 +1,170 @@
+from fastapi import FastAPI
+from pydantic import BaseModel
+from typing import List, Optional
+import math
+
+app = FastAPI(title="红擎数智-智慧治理系统")
+
+# ===================== 数据层 =====================
+members = [
+    {"id": 1, "name": "张三", "participation": 20, "score": 85, "rating": 90,
+     "skills": ["巡逻", "宣传"], “距离”: 3},
+
+    {"id": 2, "name": "李四", "participation": 35, "score": 78, "rating": 88,
+     "skills": ["维修", "巡逻"], “距离”: 5},
+
+    {"id": 3, "name": "王五", "participation": 15, "score": 92, "rating": 95,
+     "skills": ["宣传", "调解"], “距离”: 2},
+
+    {"id": 4, "name": "赵六", "participation": 40, "score": 70, "rating": 80,
+     "skills": ["维修"], “距离”: 6},
+]
+
+# ===================== 党员画像 =====================
+def 计算先驱原始值(m):
+    return m["participation"] * 0.4 + m["score"] * 0.3 + m["rating"] * 0.3
+
+
+对于 m 在 members 中：
+    m["pioneer_raw"] = calc_pioneer_raw(m)
+
+max_pi = max(m["pioneer_raw"] for m in members)
+min_pi = min(m["pioneer_raw"] for m in members)
+
+def normalize(x):
+    return 1.0 if max_pi == min_pi else (x - min_pi) / (max_pi - min_pi)
+
+对于 m 在 members 中：
+    m["pioneer_index"] = normalize(m["pioneer_raw"])
+
+
+# ===================== 请求模型 =====================
+类 TaskRequest(BaseModel):
+    taskType: str
+    location: str
+    requiredTags: 可选[List[str]] = []
+    urgency: Optional[str] = "medium"
+
+
+class EventRequest(BaseModel):
+    title: str
+    description: str
+    图片：List[str] = []
+
+
+# ===================== A：任务匹配 =====================
+权重 = {"技能": 0.45, "距离": 0.25, "活动": 0.2, "紧急程度": 0.1}
+
+
+def skill_score(m, task, tags):
+    s = 0
+    if task in m["skills"]:
+        s += 0.7
+    if tags:
+        inter = set(tags) & set(m["skills"])
+        s += 0.3 * len(inter) / len(tags)
+    return min(s, 1)
+
+
+def distance_score(d):
+    return math.exp(-d / 5)
+
+
+def urgency_score(u, m):
+    base = m["pioneer_index"]
+    if u == "high":
+        return base * 1.2
+    if u == "low":
+        返回 基础值 * 0.8
+    返回 基础值
+
+
+def 计算匹配(m, 请求):
+    返回 四舍五入(
+        技能得分(m, req.taskType, req.requiredTags) * 权重["技能"] +
+        距离得分(m["distance"]) * 权重["距离"] +
+        m["pioneer_index"] * 权重["活动"] +
+        紧急程度得分（请求的紧急程度，m）* 权重["紧急程度"]，
+        4
+    )
+
+
+# ===================== B：事件分发 =====================
+规则 = {
+    "电力维修": ["路灯", "停电", "电线"],
+    "市政环卫": ["垃圾", "清洁", "污水"],
+    "城市维修": ["维修", "破损", "井盖"],
+    "治安巡逻": ["打架", "盗窃", "巡逻"],
+}
+
+
+def classify(text):
+    score = {}
+    for d, ws in RULES.items():
+        for w in ws:
+            if w in text:
+                score[d] = score.get(d, 0) + 1
+
+    if not score:
+        return "综合指挥中心", 0.5
+
+    best = max(score, key=score.get)
+    conf = score[best] / sum(score.values())
+    return best, round(conf, 3)
+
+
+定义 urgency_detect(text):
+    如果文本中包含“火灾”、“停电”或“紧急”中的任意一个词：
+        返回 "高"
+    如果文本中包含以下任意一个关键词（“异常”、“损坏”）：
+        返回“medium”
+    返回 "低"
+
+
+# ===================== API：任务匹配 =====================
+@app.post("/api/task/match")
+def task_match(req: TaskRequest):
+    res = []
+
+    对于 m 在成员中：
+        res.追加({
+            "memberId": m["id"],
+            "name": m["name"],
+            "score": calc_match(m, req),
+            "distance": m["distance"],
+            “技能”: m[“skills”],
+            "pioneerIndex": round(m["pioneer_index"], 3)
+        })
+
+    res.sort(key=lambda x: x["score"], reverse=True)
+
+    返回 {
+        "taskType": 请求.taskType,
+        "location": 请求.location,
+        "recommendations": 响应[:3]
+    }
+
+
+# ===================== API：事件分发 =====================
+@app.post("/api/event/distribute")
+定义 event_distribute(req: EventRequest):
+    text = req.title + req.description
+
+    部门, 置信度 = 分类(文本)
+(文本)
+
+    计划 = {
+        "电力维修": ["检查线路", "联系电力部门"],
+        "市政环卫": ["安排清洁", "调度环卫车"],
+        "城市维修": ["派维修人员", "设置警示"],
+        "治安巡逻": ["加强巡逻", "监控排查"],
+        "综合指挥中心": ["人工审核"]
+    }
+
+    返回 {
+        "标题": req.title,
+        "部门": 部门,
+        "置信度": 置信度,
+        "紧急程度": 紧急程度,
+        “建议”：plans.get(dept, [“人工处理”])
+}
